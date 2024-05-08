@@ -1,0 +1,161 @@
+version: '3'
+
+networks:
+  emaily:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 173.18.0.0/16
+
+services:
+  redis1:
+    image: 'redis:latest'
+    container_name: redis1
+    ports:
+      - "6379:6379"
+    depends_on:
+      - redis2
+      - redis3
+      - redis4
+      - redis5
+      - redis6
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      emaily:
+        ipv4_address: 173.18.0.61
+
+  redis2:
+    image: 'redis:latest'
+    container_name: redis2
+    ports:
+      - "6380:6379"
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      emaily:
+        ipv4_address: 173.18.0.62
+
+  redis3:
+    image: 'redis:latest'
+    container_name: redis3
+    ports:
+      - "6381:6379"
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      emaily:
+        ipv4_address: 173.18.0.63
+
+  redis4:
+    image: 'redis:latest'
+    container_name: redis4
+    ports:
+      - "6379"
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      emaily:
+        ipv4_address: 173.18.0.64
+
+  redis5:
+    image: 'redis:latest'
+    container_name: redis5
+    ports:
+      - "6379"
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      emaily:
+        ipv4_address: 173.18.0.65
+
+  redis6:
+    image: 'redis:latest'
+    container_name: redis6
+    ports:
+      - "6379"
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      emaily:
+        ipv4_address: 173.18.0.66
+
+  cluster_initiator:
+    container_name: cluster_initiator
+    image: redis:latest
+    command: /bin/sh -c "sleep 5 && \
+      echo 'yes' | redis-cli --cluster create \
+      redis1:6379 \
+      redis2:6379 \
+      redis3:6379 \
+      redis4:6379 \
+      redis5:6379 \
+      redis6:6379 \
+      --cluster-replicas 1"
+    depends_on:
+      - redis1
+    networks:
+      emaily:
+        ipv4_address: 173.18.0.8
+
+  redis_commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis_web
+    depends_on:
+      - redis1
+    environment:
+      REDIS_HOSTS: "local:redis1:6379,local:redis2:6379,local:redis3:6379,local:redis4:6379,local:redis5:6379,local:redis6:6379"
+    ports:
+      - "5000:8081"
+    networks:
+      emaily:
+        ipv4_address: 173.18.0.9
+
+#  sentinel1:
+#    image: 'redis:latest'
+#    depends_on:
+#      - cluster_initiator
+#    networks:
+#      emaily:
+#        ipv4_address: 173.18.0.5
+#    ports:
+#      - "26379:26379"
+#    command: >
+#      redis-sentinel /etc/redis/sentinel.conf
+#    volumes:
+#      - ./sentinel1.conf:/etc/redis/sentinel.conf
+#
+#  sentinel2:
+#    image: 'redis:latest'
+#    depends_on:
+#      - cluster_initiator
+#    networks:
+#      emaily:
+#        ipv4_address: 173.18.0.6
+#    ports:
+#      - "26380:26379"
+#    command: >
+#      redis-sentinel /etc/redis/sentinel.conf
+#    volumes:
+#      - ./sentinel2.conf:/etc/redis/sentinel.conf
+#
+#  sentinel3:
+#    image: 'redis:latest'
+#    depends_on:
+#      - cluster_initiator
+#    networks:
+#      emaily:
+#        ipv4_address: 173.18.0.7
+#    ports:
+#      - "26381:26379"
+#    command: >
+#      redis-sentinel /etc/redis/sentinel.conf
+#    volumes:
+#      - ./sentinel3.conf:/etc/redis/sentinel.conf
