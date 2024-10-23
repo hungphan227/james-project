@@ -19,23 +19,44 @@
 
 package org.apache.james.events;
 
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
 import jakarta.inject.Inject;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableSet;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class CassandraEventDeadLetters implements EventDeadLetters {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CassandraEventDeadLetters.class);
 
     private final CassandraEventDeadLettersDAO cassandraEventDeadLettersDAO;
     private final CassandraEventDeadLettersGroupDAO cassandraEventDeadLettersGroupDAO;
+    private final EventSerializer eventSerializer;
+    private final Set<EventSerializer> allEventSerializers;
+
+    public CassandraEventDeadLetters(CassandraEventDeadLettersDAO cassandraEventDeadLettersDAO,
+                                     CassandraEventDeadLettersGroupDAO cassandraEventDeadLettersGroupDAO,
+                                     EventSerializer eventSerializer) {
+        this(cassandraEventDeadLettersDAO, cassandraEventDeadLettersGroupDAO, eventSerializer, ImmutableSet.of());
+    }
 
     @Inject
     public CassandraEventDeadLetters(CassandraEventDeadLettersDAO cassandraEventDeadLettersDAO,
-                                     CassandraEventDeadLettersGroupDAO cassandraEventDeadLettersGroupDAO) {
+                                     CassandraEventDeadLettersGroupDAO cassandraEventDeadLettersGroupDAO,
+                                     EventSerializer eventSerializer,
+                                     Set<EventSerializer> allEventSerializers) {
         this.cassandraEventDeadLettersDAO = cassandraEventDeadLettersDAO;
         this.cassandraEventDeadLettersGroupDAO = cassandraEventDeadLettersGroupDAO;
+        this.eventSerializer = eventSerializer;
+        this.allEventSerializers = allEventSerializers;
     }
 
     @Override
@@ -44,7 +65,7 @@ public class CassandraEventDeadLetters implements EventDeadLetters {
         Preconditions.checkArgument(failDeliveredEvent != null, FAIL_DELIVERED_EVENT_CANNOT_BE_NULL);
 
         InsertionId insertionId = InsertionId.random();
-        return cassandraEventDeadLettersDAO.store(registeredGroup, failDeliveredEvent, insertionId)
+        return cassandraEventDeadLettersDAO.store(registeredGroup, eventSerializer.toJson(failDeliveredEvent), insertionId)
             .then(cassandraEventDeadLettersGroupDAO.storeGroup(registeredGroup))
             .thenReturn(insertionId);
     }
@@ -70,7 +91,8 @@ public class CassandraEventDeadLetters implements EventDeadLetters {
         Preconditions.checkArgument(registeredGroup != null, REGISTERED_GROUP_CANNOT_BE_NULL);
         Preconditions.checkArgument(failDeliveredInsertionId != null, FAIL_DELIVERED_ID_INSERTION_CANNOT_BE_NULL);
 
-        return cassandraEventDeadLettersDAO.retrieveFailedEvent(registeredGroup, failDeliveredInsertionId);
+        return cassandraEventDeadLettersDAO.retrieveFailedEvent(registeredGroup, failDeliveredInsertionId)
+            .map(this::deserialize);
     }
 
     @Override
@@ -88,5 +110,27 @@ public class CassandraEventDeadLetters implements EventDeadLetters {
     @Override
     public Mono<Boolean> containEvents() {
         return cassandraEventDeadLettersDAO.containEvents();
+    }
+
+    private Event deserialize(String json) {
+        List<Event> events = allEventSerializers.stream()
+            .map(eventSerializer -> Optional.ofNullable(deserialize(json, eventSerializer)))
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .toList();
+
+        switch (events.size()) {
+            case 0: throw new RuntimeException("Could not deserialize event: " + json);
+            case 1: return events.getFirst();
+            default: throw new RuntimeException("More than one serializers could deserialize event: " + json);
+        }
+    }
+
+    private Event deserialize(String json, EventSerializer eventSerializer) {
+        try {
+            return eventSerializer.asEvent(json);
+        } catch (Exception ex) {
+            return null;
+        }
     }
 }

@@ -35,8 +35,9 @@ class CassandraEventDeadLettersTest implements EventDeadLettersContract.AllContr
     @BeforeEach
     void setUp(CassandraCluster cassandraCluster) {
         EventSerializer eventSerializer = new TestEventSerializer();
-        eventDeadLetters = new CassandraEventDeadLetters(new CassandraEventDeadLettersDAO(cassandraCluster.getConf(), eventSerializer),
-                                                         new CassandraEventDeadLettersGroupDAO(cassandraCluster.getConf()));
+        eventDeadLetters = new CassandraEventDeadLetters(new CassandraEventDeadLettersDAO(cassandraCluster.getConf()),
+            new CassandraEventDeadLettersGroupDAO(cassandraCluster.getConf()),
+            eventSerializer);
     }
 
     @Override

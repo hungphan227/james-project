@@ -19,6 +19,7 @@
 
 package org.apache.james.events;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -92,6 +93,10 @@ public interface EventDeadLetters {
     Mono<Void> remove(Group registeredGroup);
 
     Mono<Event> failedEvent(Group registeredGroup, InsertionId failDeliveredInsertionId);
+
+    default Mono<Event> failedEvent(Group registeredGroup, InsertionId failDeliveredInsertionId, Map<Group, EventSerializer> mapGroupToEventSerializer) {
+        return failedEvent(registeredGroup, failDeliveredInsertionId);
+    }
 
     Flux<InsertionId> failedIds(Group registeredGroup);
 
