@@ -19,7 +19,6 @@
 
 package org.apache.james.events;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -36,16 +35,11 @@ public class EventDeserializers {
     }
 
     public Event deserialize(String json) {
-        List<Event> events = allEventSerializers.stream()
+        return allEventSerializers.stream()
             .map(eventSerializer -> deserialize(json, eventSerializer))
             .flatMap(Optional::stream)
-            .toList();
-
-        switch (events.size()) {
-            case 0: throw new RuntimeException("Could not deserialize event: " + json);
-            case 1: return events.getFirst();
-            default: throw new RuntimeException("More than one serializers could deserialize event: " + json);
-        }
+            .findFirst()
+            .orElseThrow(() -> new RuntimeException("Could not deserialize event: " + json));
     }
 
     private Optional<Event> deserialize(String json, EventSerializer eventSerializer) {
