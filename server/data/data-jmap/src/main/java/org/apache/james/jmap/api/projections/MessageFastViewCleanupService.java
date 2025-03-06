@@ -19,44 +19,41 @@
 
 package org.apache.james.jmap.api.projections;
 
-import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
+import jakarta.inject.Inject;
 
-import java.util.Collection;
-import java.util.Map;
-
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.mailbox.model.MessageId;
-import org.reactivestreams.Publisher;
-
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
+import org.apache.james.mailbox.store.mail.MessageService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-public interface MessageFastViewProjection {
+public class MessageFastViewCleanupService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MessageFastViewCleanupService.class);
+    private static final int DEFAULT_MESSAGE_IDS_PER_SECOND = 1000;
 
-    String MESSAGE_FAST_VIEW_PROJECTION = "MessageFastViewProjection";
-    String METRIC_RETRIEVE_HIT_COUNT = MESSAGE_FAST_VIEW_PROJECTION + ":retrieveHitCount";
-    String METRIC_RETRIEVE_MISS_COUNT = MESSAGE_FAST_VIEW_PROJECTION + ":retrieveMissCount";
+    private final MessageFastViewProjection messageFastViewProjection;
+    private final MessageService messageService;
 
-    Publisher<Void> store(MessageId messageId, MessageFastViewPrecomputedProperties preview);
+    @Inject
+    public MessageFastViewCleanupService(MessageFastViewProjection messageFastViewProjection, MessageService messageService) {
+        this.messageFastViewProjection = messageFastViewProjection;
+        this.messageService = messageService;
+    }
 
-    Publisher<MessageFastViewPrecomputedProperties> retrieve(MessageId messageId);
+    public Mono<Void> cleanup() {
+        return Flux.from(messageFastViewProjection.getAllMessageIds())
+            .flatMap(messageId -> exist(messageId)
+                    .filter(exist -> !exist)
+                    .map(any -> messageId),
+                DEFAULT_MESSAGE_IDS_PER_SECOND)
+            .flatMap(messageId -> Mono.from(messageFastViewProjection.delete(messageId)))
+            .then()
+            .doFinally(any -> LOGGER.info("Message fast view cleanup complete"));
+    }
 
-    Publisher<Void> delete(MessageId messageId);
-
-    Publisher<MessageId> getAllMessageIds();
-
-    @VisibleForTesting
-    Publisher<Void> clear();
-
-    default Publisher<Map<MessageId, MessageFastViewPrecomputedProperties>> retrieve(Collection<MessageId> messageIds) {
-        Preconditions.checkNotNull(messageIds);
-
-        return Flux.fromIterable(messageIds)
-            .flatMap(messageId -> Mono.from(this.retrieve(messageId))
-                .map(preview -> Pair.of(messageId, preview)), DEFAULT_CONCURRENCY)
-            .collectMap(Pair::getLeft, Pair::getRight);
+    private Mono<Boolean> exist(MessageId messageId) {
+        return messageService.exist(messageId);
     }
 }
